@@ -1,0 +1,42 @@
+.DS_Store
+.thumbs.db
+node_modules
+/**/node_modules
+/**/dist
+# Build outputs
+dist/
+.quasar/
+.turbo/
+coverage/
+
+# Quasar core related
+/quasar.config.*.temporary.compiled*
+
+# Cordova related
+/src-cordova/node_modules
+/src-cordova/platforms
+/src-cordova/plugins
+/src-cordova/www
+
+# Capacitor related
+/src-capacitor/www
+/src-capacitor/node_modules
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# Editor/project files
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Env files
+.env
+.env.*
+.env.local*

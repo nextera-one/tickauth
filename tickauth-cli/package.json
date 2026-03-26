@@ -1,0 +1,30 @@
+{
+  "name": "@nextera.one/tickauth-cli",
+  "version": "1.2.1",
+  "description": "TickAuth CLI - Temporal Authorization Protocol command-line interface",
+  "bin": {
+    "tickauth": "dist/index.js"
+  },
+  "author": "NextEra.One",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "npm run build && node --test",
+    "prepare": "npm run build"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "dependencies": {
+    "@nextera.one/tickauth-sdk": "^1.1.0",
+    "@nextera.one/tps-standard": "^0.7.0",
+    "chalk": "^4.1.2",
+    "commander": "^14.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3"
+  }
+}
