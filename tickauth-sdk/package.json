@@ -1,6 +1,6 @@
 {
   "name": "@nextera.one/tickauth-sdk",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "TypeScript/JavaScript SDK for TickAuth - Temporal Authorization Protocol",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -43,7 +43,6 @@
     "vitest": "^4.0.16"
   },
   "dependencies": {
-    "@nextera.one/tickauth-sdk": "^1.0.1",
     "@nextera.one/tps-standard": "^0.7.0",
     "@noble/ed25519": "^3.0.0",
     "@noble/hashes": "^2.0.1",

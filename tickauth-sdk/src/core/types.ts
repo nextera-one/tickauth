@@ -8,18 +8,18 @@
  * TickAuth verification modes as defined in the protocol spec.
  */
 export type TickAuthMode =
-  | 'PASSKEY'   // Mode A: Browser Passkey Mode (WebAuthn-like)
-  | 'ATTESTED'  // Mode B: Device Attestation Mode
-  | 'PRESENCE'  // Mode C: Continuous/Step-up Presence Mode
-  | 'OFFLINE'   // Mode D: Offline/Airgap Mode
-  | 'AGENT';    // Mode E: Service/Agent Mode (non-human actors)
+  | "PASSKEY" // Mode A: Browser Passkey Mode (WebAuthn-like)
+  | "ATTESTED" // Mode B: Device Attestation Mode
+  | "PRESENCE" // Mode C: Continuous/Step-up Presence Mode
+  | "OFFLINE" // Mode D: Offline/Airgap Mode
+  | "AGENT"; // Mode E: Service/Agent Mode (non-human actors)
 
-export type TickAuthAlg = 'ed25519';
+export type TickAuthAlg = "ed25519";
 
 /**
  * Tick window defines the temporal authorization bounds.
  */
-import type { TPSComponents } from '@nextera.one/tps-standard';
+import type { TPSComponents } from "@nextera.one/tps-standard";
 
 /**
  * Tick window defines the temporal authorization bounds.
@@ -105,7 +105,7 @@ export interface TickAuthProof {
   /** Cryptographic signature */
   sig: TickAuthSignature;
   /** Optional interaction type for PRESENCE mode */
-  interactionType?: 'touch' | 'pin' | 'biometric';
+  interactionType?: "touch" | "pin" | "biometric";
 }
 
 /**
@@ -129,7 +129,11 @@ export interface TickAuthClearance {
 /**
  * Capsule verification outcome.
  */
-export type CapsuleStatus = 'approved' | 'denied' | 'expired' | 'replay_rejected';
+export type CapsuleStatus =
+  | "approved"
+  | "denied"
+  | "expired"
+  | "replay_rejected";
 
 /**
  * TickAuth Capsule — the canonical evidence artifact produced after verification.
@@ -144,7 +148,7 @@ export interface TickAuthCapsule {
   /** Capsule schema version */
   capsule_version: 1;
   /** Capsule type */
-  capsule_type: 'tickauth.authorization';
+  capsule_type: "tickauth.authorization";
   /** Subject performing the action (e.g. "user:alice", "service:billing-api") */
   subject?: string;
   /** Intent being authorized */
@@ -192,12 +196,14 @@ export interface VerifyResult {
   ok: boolean;
   /** Error code if failed */
   error?:
-    | 'INVALID_SIGNATURE'
-    | 'OUTSIDE_WINDOW'
-    | 'REPLAY_DETECTED'
-    | 'DRIFT_EXCEEDED'
-    | 'POLICY_DENIED'
-    | 'INVALID_PROOF';
+    | "INVALID_SIGNATURE"
+    | "OUTSIDE_WINDOW"
+    | "REPLAY_DETECTED"
+    | "DRIFT_EXCEEDED"
+    | "POLICY_DENIED"
+    | "INVALID_PROOF"
+    | "MODE_MISMATCH"
+    | "ACTION_MISMATCH";
   /** Human-readable error message */
   message?: string;
   /**
@@ -249,3 +255,8 @@ export interface CreateChallengeOptions {
   /** Optional context */
   ctx?: Record<string, unknown>;
 }
+
+/**
+ * How replay uniqueness is computed for proofs.
+ */
+export type ReplayScope = "nonce" | "challenge" | "proof";

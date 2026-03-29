@@ -1,6 +1,6 @@
 {
   "name": "@nextera.one/tickauth-server",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "TickAuth server runtime — capsule store, retrieval, and delegation foundations",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -31,7 +31,7 @@
   "author": "Nextera.one",
   "license": "MIT",
   "dependencies": {
-    "@nextera.one/tickauth-sdk": "^1.1.0"
+    "@nextera.one/tickauth-sdk": "^1.2.0"
   },
   "devDependencies": {
     "tsup": "^8.0.0",

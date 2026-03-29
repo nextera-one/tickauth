@@ -3,10 +3,10 @@
  * ----------------------------------
  * Create temporal authorization challenges.
  */
+import { ulid } from "ulid";
 
-import { ulid } from 'ulid';
-import type { TickAuthChallenge, CreateChallengeOptions, TickWindow } from './types';
-import { generateNonce } from './crypto';
+import { generateNonce } from "./crypto";
+import type { CreateChallengeOptions, TickAuthChallenge, TickWindow } from "./types";
 
 /**
  * Get current tick (milliseconds since epoch).
@@ -32,14 +32,37 @@ export function getCurrentTick(): number {
  * ```
  */
 
-export function createChallenge(options: CreateChallengeOptions): TickAuthChallenge {
+export function createChallenge(
+  options: CreateChallengeOptions,
+): TickAuthChallenge {
+  if (!options.action || !options.action.trim()) {
+    throw new Error("createChallenge: action is required");
+  }
+
+  if (
+    !Number.isFinite(options.windowMs ?? 30000) ||
+    (options.windowMs ?? 30000) <= 0
+  ) {
+    throw new Error("createChallenge: windowMs must be a positive number");
+  }
+
+  if (
+    options.tickIndex !== undefined &&
+    (!Number.isInteger(options.tickIndex) || options.tickIndex < 0)
+  ) {
+    throw new Error(
+      "createChallenge: tickIndex must be a non-negative integer",
+    );
+  }
+
   const now = getCurrentTick();
   const windowMs = options.windowMs ?? 30000; // Default 30 seconds
 
   // Support both ms-based and TPS-based windows
+  const startTick = options.tickIndex ?? now;
   const window: TickWindow = {
-    tickStart: options.tickIndex ?? now,
-    tickEnd: options.tickIndex ? options.tickIndex : now + windowMs,
+    tickStart: startTick,
+    tickEnd: startTick + windowMs,
     maxDriftMs: 1000, // 1 second drift tolerance
   };
   if (options.tickTps) {
@@ -50,7 +73,7 @@ export function createChallenge(options: CreateChallengeOptions): TickAuthChalle
   const challenge: TickAuthChallenge = {
     v: 1,
     id: ulid(),
-    action: options.action,
+    action: options.action.trim(),
     mode: options.mode,
     window,
     nonce: generateNonce(32),
@@ -77,7 +100,7 @@ export function serializeChallenge(challenge: TickAuthChallenge): Uint8Array {
   function deepSort(obj: any): any {
     if (Array.isArray(obj)) {
       return obj.map(deepSort);
-    } else if (obj && typeof obj === 'object') {
+    } else if (obj && typeof obj === "object") {
       return Object.keys(obj)
         .sort()
         .reduce((acc, key) => {
@@ -89,4 +112,20 @@ export function serializeChallenge(challenge: TickAuthChallenge): Uint8Array {
   }
   const canonical = JSON.stringify(deepSort(challenge));
   return new TextEncoder().encode(canonical);
+}
+
+/**
+ * Serialize the exact payload that is signed/verified for a proof.
+ * This must remain stable across sign and verify paths.
+ */
+export function serializeProofPayload(
+  challenge: TickAuthChallenge,
+  tick: number,
+  signedAt: string,
+): Uint8Array {
+  const challengeCanonical = new TextDecoder().decode(
+    serializeChallenge(challenge),
+  );
+  const payload = `v1|challenge=${challengeCanonical}|tick=${tick}|signedAt=${signedAt}`;
+  return new TextEncoder().encode(payload);
 }

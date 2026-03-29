@@ -1,12 +1,11 @@
+import { getCurrentTick, serializeProofPayload } from "./challenge";
+import { signEd25519 } from "./crypto";
 /**
  * TickAuth SDK - Proof Creation
  * -----------------------------
  * Sign challenges to create authorization proofs.
  */
-
-import type { TickAuthChallenge, TickAuthProof, TickAuthIdentity } from './types';
-import { signEd25519 } from './crypto';
-import { serializeChallenge, getCurrentTick } from './challenge';
+import type { TickAuthChallenge, TickAuthIdentity, TickAuthProof } from "./types";
 
 /**
  * Sign a challenge to create a proof.
@@ -24,17 +23,15 @@ export async function signChallenge(
   challenge: TickAuthChallenge,
   identity: TickAuthIdentity,
 ): Promise<TickAuthProof> {
+  if (!challenge.action || !challenge.action.trim()) {
+    throw new Error("signChallenge: challenge.action must be non-empty");
+  }
+
   const tick = getCurrentTick();
   const signedAt = new Date(tick).toISOString();
 
-  // Create the message to sign: challenge + tick + signedAt
-  const message = new TextEncoder().encode(
-    JSON.stringify({
-      challenge: serializeChallenge(challenge),
-      tick,
-      signedAt,
-    }),
-  );
+  // Create the canonical message to sign.
+  const message = serializeProofPayload(challenge, tick, signedAt);
 
   const sigHex = await signEd25519(message, identity.privateKeyHex);
 
@@ -63,15 +60,21 @@ export function createProofFromSignature(
   tick: number,
   sigHex: string,
   publicKeyHex: string,
-  options?: { kid?: string; interactionType?: 'touch' | 'pin' | 'biometric' },
+  options?: { kid?: string; interactionType?: "touch" | "pin" | "biometric" },
 ): TickAuthProof {
+  if (!challenge.action || !challenge.action.trim()) {
+    throw new Error(
+      "createProofFromSignature: challenge.action must be non-empty",
+    );
+  }
+
   const proof: TickAuthProof = {
     v: 1,
     challenge,
     tick,
     signedAt: new Date(tick).toISOString(),
     sig: {
-      alg: 'ed25519',
+      alg: "ed25519",
       publicKeyHex,
       sigHex,
       kid: options?.kid,

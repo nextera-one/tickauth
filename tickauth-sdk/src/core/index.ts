@@ -4,7 +4,7 @@
  */
 
 // Types
-export * from './types';
+export * from "./types";
 
 // Crypto utilities
 export {
@@ -14,19 +14,28 @@ export {
   generateNonce,
   bytesToHex,
   hexToBytes,
-} from './crypto';
+} from "./crypto";
 
 // Challenge creation
-export { createChallenge, serializeChallenge, getCurrentTick } from './challenge';
+export {
+  createChallenge,
+  serializeChallenge,
+  serializeProofPayload,
+  getCurrentTick,
+} from "./challenge";
 
 // Proof creation
-export { signChallenge, createProofFromSignature } from './proof';
+export { signChallenge, createProofFromSignature } from "./proof";
 
 // Verification
-export { verifyProof, isProofInWindow, type VerifyOptions } from './verify';
+export { verifyProof, isProofInWindow, type VerifyOptions } from "./verify";
 
 // Replay guard
-export { ReplayGuard, getDefaultReplayGuard } from './replay-guard';
+export { ReplayGuard, getDefaultReplayGuard } from "./replay-guard";
 
 // Capsule
-export { createCapsule, verifyCapsuleIntegrity, type CreateCapsuleOptions } from './capsule';
+export {
+  createCapsule,
+  verifyCapsuleIntegrity,
+  type CreateCapsuleOptions,
+} from "./capsule";

@@ -22,9 +22,9 @@
  * });
  * ```
  */
+import { type TickAuthProof, type VerifyOptions, verifyProof } from "@nextera.one/tickauth-sdk";
 
-import { verifyProof, type TickAuthProof, type VerifyOptions } from '@nextera.one/tickauth-sdk';
-import type { CapsuleStore } from './store';
+import type { CapsuleStore } from "./store";
 
 export interface VerifyHandlerOptions extends VerifyOptions {
   /** Capsule store to persist the result */
@@ -57,18 +57,41 @@ export interface VerifyHandlerResponse {
 export function createVerifyHandler(options: VerifyHandlerOptions = {}) {
   const { store, includeCapsuleInResponse = false, ...verifyOptions } = options;
 
-  return async function verifyHandler(body: unknown): Promise<VerifyHandlerResponse> {
+  const getFailureStatus = (error?: string): number => {
+    switch (error) {
+      case "INVALID_PROOF":
+        return 400;
+      case "REPLAY_DETECTED":
+        return 409;
+      case "OUTSIDE_WINDOW":
+      case "DRIFT_EXCEEDED":
+      case "ACTION_MISMATCH":
+      case "MODE_MISMATCH":
+      case "INVALID_SIGNATURE":
+        return 401;
+      default:
+        return 401;
+    }
+  };
+
+  return async function verifyHandler(
+    body: unknown,
+  ): Promise<VerifyHandlerResponse> {
     // Validate minimal proof shape before passing to SDK
     if (
       !body ||
-      typeof body !== 'object' ||
-      !('v' in body) ||
-      !('challenge' in body) ||
-      !('sig' in body)
+      typeof body !== "object" ||
+      !("v" in body) ||
+      !("challenge" in body) ||
+      !("sig" in body)
     ) {
       return {
         status: 400,
-        body: { ok: false, error: 'INVALID_PROOF', message: 'Request body is not a valid TickAuth proof' },
+        body: {
+          ok: false,
+          error: "INVALID_PROOF",
+          message: "Request body is not a valid TickAuth proof",
+        },
       };
     }
 
@@ -84,14 +107,16 @@ export function createVerifyHandler(options: VerifyHandlerOptions = {}) {
 
     if (!result.ok) {
       return {
-        status: 401,
+        status: getFailureStatus(result.error),
         body: {
           ok: false,
           capsule_id: result.capsule_id,
           capsule_status: result.capsule?.verification.status,
           error: result.error,
           message: result.message,
-          ...(includeCapsuleInResponse && result.capsule ? { capsule: result.capsule } : {}),
+          ...(includeCapsuleInResponse && result.capsule
+            ? { capsule: result.capsule }
+            : {}),
         },
       };
     }
@@ -102,7 +127,9 @@ export function createVerifyHandler(options: VerifyHandlerOptions = {}) {
         ok: true,
         capsule_id: result.capsule_id,
         capsule_status: result.capsule?.verification.status,
-        ...(includeCapsuleInResponse && result.capsule ? { capsule: result.capsule } : {}),
+        ...(includeCapsuleInResponse && result.capsule
+          ? { capsule: result.capsule }
+          : {}),
       },
     };
   };
