@@ -83,6 +83,8 @@ export function createChallenge(
   if (options.rp) challenge.rp = options.rp;
   if (options.sub) challenge.sub = options.sub;
   if (options.ctx) challenge.ctx = options.ctx;
+  if (options.subjectPublicKeyHex)
+    challenge.subject_public_key_hex = options.subjectPublicKeyHex;
   if (options.tickIndex) challenge.tickIndex = options.tickIndex;
   if (options.tickTps) challenge.tickTps = options.tickTps;
   if (options.tickProfile) challenge.tickProfile = options.tickProfile;

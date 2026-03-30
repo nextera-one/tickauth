@@ -1,4 +1,4 @@
-import { getDefaultReplayGuard, ReplayGuard } from "./replay-guard";
+import { getDefaultReplayGuard, ReplayGuard, type ReplayGuardStore } from "./replay-guard";
 import { getCurrentTick, serializeProofPayload } from "./challenge";
 import { createCapsule } from "./capsule";
 import { verifyEd25519 } from "./crypto";
@@ -7,7 +7,7 @@ import { verifyEd25519 } from "./crypto";
  * ----------------------------------
  * Verify proofs with signature, window, and replay checks.
  */
-import type { ReplayScope, TickAuthClearance, TickAuthMode, TickAuthProof, VerifyResult } from "./types";
+import type { CapsuleType, ReplayScope, TickAuthClearance, TickAuthMode, TickAuthProof, VerifyResult } from "./types";
 
 export interface VerifyOptions {
   /** Public key to verify against (hex). If not provided, verification will fail (never trust embedded key by default). */
@@ -28,6 +28,33 @@ export interface VerifyOptions {
   currentTick?: number;
   /** Clearance duration in milliseconds (default: 60000 = 1 minute) */
   clearanceDurationMs?: number;
+  /**
+   * Async replay guard for distributed deployments (Redis-backed etc.).
+   * Takes precedence over `replayGuard` if both are provided.
+   */
+  asyncReplayGuard?: ReplayGuardStore;
+  /**
+   * For PRESENCE mode step-up: the parent capsule ID to link this authorization to.
+   * Include when authorizing a step-up action that requires an active session context.
+   */
+  presenceParentCapsuleId?: string;
+  /**
+   * When true and mode is PRESENCE, deny verification if no presenceParentCapsuleId is provided.
+   * Enforces that every PRESENCE step-up is chained to an existing session capsule.
+   */
+  requireParentCapsule?: boolean;
+  /** Capsule type for the resulting capsule (default: 'tickauth.authorization') */
+  capsuleType?: CapsuleType;
+  /** Capsule validity duration in ms — sets valid_until on the capsule (default: clearanceDurationMs) */
+  capsuleValidityMs?: number;
+  /** Device ID of the entity issuing/approving this capsule (e.g. mobile app device) */
+  issuerDeviceId?: string;
+  /** Device ID of the subject being authorized (e.g. browser device) */
+  subjectDeviceId?: string;
+  /** Scope/capabilities to embed in the capsule */
+  scope?: string[];
+  /** If true, the resulting capsule will be marked single_use */
+  singleUse?: boolean;
 }
 
 function buildReplayKey(
@@ -215,7 +242,10 @@ export async function verifyProof(
   // 4. Check for replay
   if (!options.skipReplayCheck) {
     const replayKey = buildReplayKey(proof, replayScope);
-    if (!replayGuard.check(replayKey)) {
+    const isNewNonce = options.asyncReplayGuard
+      ? await options.asyncReplayGuard.checkAndMark(replayKey)
+      : replayGuard.check(replayKey);
+    if (!isNewNonce) {
       const capsule = createCapsule({
         proof,
         status: "replay_rejected",
@@ -231,7 +261,28 @@ export async function verifyProof(
     }
   }
 
-  // 5. Create clearance (kept for backward compatibility)
+  // 5. Enforce PRESENCE mode parent capsule requirement
+  if (
+    proof.challenge.mode === "PRESENCE" &&
+    options.requireParentCapsule &&
+    !options.presenceParentCapsuleId
+  ) {
+    const capsule = createCapsule({
+      proof,
+      status: "denied",
+      reason: "MISSING_PARENT_CAPSULE",
+    });
+    return {
+      ok: false,
+      error: "POLICY_DENIED",
+      message:
+        "PRESENCE mode requires a parent capsule (active session context)",
+      capsule,
+      capsule_id: capsule.capsule_id,
+    };
+  }
+
+  // 6. Create clearance (kept for backward compatibility)
   const clearance: TickAuthClearance = {
     granted: true,
     challengeId: proof.challenge.id,
@@ -241,8 +292,25 @@ export async function verifyProof(
     expiresAt: new Date(currentTick + clearanceDurationMs).toISOString(),
   };
 
-  // 6. Create capsule evidence artifact
-  const capsule = createCapsule({ proof, status: "approved" });
+  // 7. Create capsule evidence artifact
+  const capsuleParents: string[] = [];
+  if (options.presenceParentCapsuleId)
+    capsuleParents.push(options.presenceParentCapsuleId);
+
+  const capsule = createCapsule({
+    proof,
+    status: "approved",
+    capsuleType: options.capsuleType,
+    validFrom: new Date(currentTick).toISOString(),
+    validUntil: new Date(
+      currentTick + (options.capsuleValidityMs ?? clearanceDurationMs),
+    ).toISOString(),
+    issuerDeviceId: options.issuerDeviceId,
+    subjectDeviceId: options.subjectDeviceId,
+    scope: options.scope,
+    singleUse: options.singleUse,
+    parents: capsuleParents.length ? capsuleParents : undefined,
+  });
 
   return {
     ok: true,

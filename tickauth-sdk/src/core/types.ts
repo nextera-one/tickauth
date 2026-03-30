@@ -62,6 +62,12 @@ export interface TickAuthChallenge {
   iat: string;
   /** Optional context data */
   ctx?: Record<string, unknown>;
+  /**
+   * Subject's public key (hex) to bind in the proof.
+   * For QR login: the browser's ephemeral public key that the mobile app approves.
+   * Ensures the approval is cryptographically bound to one specific device/session key.
+   */
+  subject_public_key_hex?: string;
   /** Optional TPS tick (canonical, machine index) */
   tickIndex?: number;
   /** Optional TPS tick (human readable) */
@@ -133,7 +139,19 @@ export type CapsuleStatus =
   | "approved"
   | "denied"
   | "expired"
-  | "replay_rejected";
+  | "replay_rejected"
+  | "consumed" // single-use capsule was consumed after first use
+  | "revoked"; // explicitly revoked post-issuance
+
+/**
+ * Capsule type — classifies the authorization event that produced the capsule.
+ */
+export type CapsuleType =
+  | "tickauth.authorization" // generic (backward-compatible default)
+  | "tickauth.login" // QR / passwordless web login
+  | "tickauth.device_registration" // new device or browser trust registration
+  | "tickauth.step_up" // step-up for sensitive actions in an active session
+  | "tickauth.recovery"; // account or device recovery flow
 
 /**
  * TickAuth Capsule — the canonical evidence artifact produced after verification.
@@ -148,7 +166,7 @@ export interface TickAuthCapsule {
   /** Capsule schema version */
   capsule_version: 1;
   /** Capsule type */
-  capsule_type: "tickauth.authorization";
+  capsule_type: CapsuleType;
   /** Subject performing the action (e.g. "user:alice", "service:billing-api") */
   subject?: string;
   /** Intent being authorized */
@@ -181,9 +199,21 @@ export interface TickAuthCapsule {
   issuer?: string;
   /** ISO timestamp of capsule creation */
   issued_at: string;
+  /** ISO timestamp — earliest this capsule is valid (for future-dated issuance) */
+  valid_from?: string;
+  /** ISO timestamp — this capsule expires at this time */
+  valid_until?: string;
+  /** Device ID that issued/approved this capsule (e.g. mobile app device) */
+  issuer_device_id?: string;
+  /** Device ID of the subject being authorized (e.g. browser device) */
+  subject_device_id?: string;
+  /** Permissions or capabilities granted by this capsule */
+  scope?: string[];
+  /** If true, this capsule may only be consumed once */
+  single_use?: boolean;
   /**
    * Optional parent capsule IDs — for forming authorization chains/graphs.
-   * @future v2 delegation and authority graph support
+   * Use for PRESENCE step-up to link back to the originating session capsule.
    */
   parents?: string[];
 }
@@ -254,6 +284,12 @@ export interface CreateChallengeOptions {
   sub?: string;
   /** Optional context */
   ctx?: Record<string, unknown>;
+  /**
+   * Subject's public key to embed in the challenge (e.g. browser key for QR login).
+   * Stored as `subject_public_key_hex` on the challenge so the signer explicitly
+   * approves that specific key, preventing browser key substitution attacks.
+   */
+  subjectPublicKeyHex?: string;
 }
 
 /**

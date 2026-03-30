@@ -31,7 +31,12 @@ export { signChallenge, createProofFromSignature } from "./proof";
 export { verifyProof, isProofInWindow, type VerifyOptions } from "./verify";
 
 // Replay guard
-export { ReplayGuard, getDefaultReplayGuard } from "./replay-guard";
+export {
+  ReplayGuard,
+  getDefaultReplayGuard,
+  InMemoryAsyncReplayGuard,
+  type ReplayGuardStore,
+} from "./replay-guard";
 
 // Capsule
 export {

@@ -67,6 +67,14 @@ export class ReplayGuard {
   }
 
   /**
+   * Remove a specific nonce from tracking.
+   * Use with caution — only invalidate nonces you explicitly intend to allow again.
+   */
+  remove(nonce: string): void {
+    this.seen.delete(nonce);
+  }
+
+  /**
    * Clear all entries.
    */
   clear(): void {
@@ -92,4 +100,65 @@ export function getDefaultReplayGuard(): ReplayGuard {
     defaultGuard = new ReplayGuard();
   }
   return defaultGuard;
+}
+
+/**
+ * Async replay guard interface for distributed deployments.
+ *
+ * Implement this interface backed by Redis (or any atomic store) for
+ * multi-instance production environments where the in-memory ReplayGuard
+ * would be bypassed by sibling processes.
+ *
+ * @example Redis implementation sketch
+ * ```ts
+ * class RedisReplayGuard implements ReplayGuardStore {
+ *   async checkAndMark(nonce: string, ttlMs = 300_000): Promise<boolean> {
+ *     const key = `tickauth:nonce:${nonce}`;
+ *     const set = await redis.set(key, '1', 'NX', 'PX', ttlMs);
+ *     return set === 'OK'; // null means already existed
+ *   }
+ *   async remove(nonce: string): Promise<void> {
+ *     await redis.del(`tickauth:nonce:${nonce}`);
+ *   }
+ * }
+ * ```
+ */
+export interface ReplayGuardStore {
+  /**
+   * Atomically check and mark a nonce.
+   * Returns true if the nonce is new (not seen before), false if replay detected.
+   * The implementation MUST be atomic to prevent race conditions.
+   *
+   * @param nonce  - The unique nonce or replay key to check.
+   * @param ttlMs  - How long to remember the nonce (ms). Default: 5 minutes.
+   */
+  checkAndMark(nonce: string, ttlMs?: number): Promise<boolean>;
+
+  /**
+   * Remove a stored nonce.
+   * Use to explicitly invalidate a nonce (e.g. on challenge cancellation).
+   */
+  remove(nonce: string): Promise<void>;
+}
+
+/**
+ * In-memory async adapter implementing ReplayGuardStore.
+ * Wraps the synchronous ReplayGuard for async-compatible code paths.
+ *
+ * NOT suitable for multi-instance deployments — use a Redis adapter in production.
+ */
+export class InMemoryAsyncReplayGuard implements ReplayGuardStore {
+  private readonly guard: ReplayGuard;
+
+  constructor(ttlMs?: number) {
+    this.guard = new ReplayGuard(ttlMs);
+  }
+
+  async checkAndMark(nonce: string): Promise<boolean> {
+    return this.guard.check(nonce);
+  }
+
+  async remove(nonce: string): Promise<void> {
+    this.guard.remove(nonce);
+  }
 }

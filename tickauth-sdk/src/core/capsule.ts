@@ -8,15 +8,10 @@
  *
  * capsule_id = "cps_b3_" + blake3(canonical_capsule_json_without_id)
  */
+import { blake3 } from "@noble/hashes/blake3";
+import { bytesToHex } from "@noble/hashes/utils";
 
-import { blake3 } from '@noble/hashes/blake3';
-import { bytesToHex } from '@noble/hashes/utils';
-import type {
-  TickAuthProof,
-  TickAuthCapsule,
-  CapsuleStatus,
-  TickAuthMode,
-} from './types';
+import type { CapsuleStatus, CapsuleType, TickAuthCapsule, TickAuthMode, TickAuthProof } from "./types";
 
 /**
  * Canonical JSON serialization for hashing.
@@ -24,13 +19,18 @@ import type {
  */
 function canonicalize(obj: unknown): string {
   if (Array.isArray(obj)) {
-    return '[' + obj.map(canonicalize).join(',') + ']';
+    return "[" + obj.map(canonicalize).join(",") + "]";
   }
-  if (obj !== null && typeof obj === 'object') {
+  if (obj !== null && typeof obj === "object") {
     const sorted = Object.keys(obj as object)
       .sort()
-      .map((k) => JSON.stringify(k) + ':' + canonicalize((obj as Record<string, unknown>)[k]));
-    return '{' + sorted.join(',') + '}';
+      .map(
+        (k) =>
+          JSON.stringify(k) +
+          ":" +
+          canonicalize((obj as Record<string, unknown>)[k]),
+      );
+    return "{" + sorted.join(",") + "}";
   }
   return JSON.stringify(obj);
 }
@@ -39,10 +39,10 @@ function canonicalize(obj: unknown): string {
  * Compute blake3 content-addressed capsule ID.
  * The ID is derived from the capsule body (without the capsule_id field itself).
  */
-function computeCapsuleId(body: Omit<TickAuthCapsule, 'capsule_id'>): string {
+function computeCapsuleId(body: Omit<TickAuthCapsule, "capsule_id">): string {
   const canonical = canonicalize(body);
   const hash = blake3(new TextEncoder().encode(canonical));
-  return 'cps_b3_' + bytesToHex(hash).slice(0, 32);
+  return "cps_b3_" + bytesToHex(hash).slice(0, 32);
 }
 
 /**
@@ -63,6 +63,20 @@ export interface CreateCapsuleOptions {
   subject?: string;
   /** Parent capsule IDs (for authorization chain tracking) */
   parents?: string[];
+  /** Capsule type (default: 'tickauth.authorization') */
+  capsuleType?: CapsuleType;
+  /** ISO — earliest valid time for this capsule */
+  validFrom?: string;
+  /** ISO — expiry time for this capsule */
+  validUntil?: string;
+  /** Device ID that is issuing/approving this capsule (e.g. mobile app) */
+  issuerDeviceId?: string;
+  /** Device ID of the subject being authorized (e.g. browser) */
+  subjectDeviceId?: string;
+  /** Scope/capabilities granted by this capsule */
+  scope?: string[];
+  /** If true, this capsule may only be consumed once */
+  singleUse?: boolean;
 }
 
 /**
@@ -91,16 +105,18 @@ export function createCapsule(options: CreateCapsuleOptions): TickAuthCapsule {
   const subject = options.subject ?? proof.challenge.sub;
 
   // Build the capsule body (without capsule_id — will be computed from this)
-  const body: Omit<TickAuthCapsule, 'capsule_id'> = {
+  const body: Omit<TickAuthCapsule, "capsule_id"> = {
     capsule_version: 1,
-    capsule_type: 'tickauth.authorization',
+    capsule_type: options.capsuleType ?? "tickauth.authorization",
     ...(subject ? { subject } : {}),
     intent: {
       action: proof.challenge.action,
     },
     tick_index: proof.tick,
     ...(proof.challenge.tickTps ? { tick_tps: proof.challenge.tickTps } : {}),
-    ...(proof.challenge.tickProfile ? { tick_profile: proof.challenge.tickProfile } : {}),
+    ...(proof.challenge.tickProfile
+      ? { tick_profile: proof.challenge.tickProfile }
+      : {}),
     nonce: proof.challenge.nonce,
     challenge_id: proof.challenge.id,
     mode: proof.challenge.mode as TickAuthMode,
@@ -111,6 +127,16 @@ export function createCapsule(options: CreateCapsuleOptions): TickAuthCapsule {
     },
     ...(issuer ? { issuer } : {}),
     issued_at: now,
+    ...(options.validFrom ? { valid_from: options.validFrom } : {}),
+    ...(options.validUntil ? { valid_until: options.validUntil } : {}),
+    ...(options.issuerDeviceId
+      ? { issuer_device_id: options.issuerDeviceId }
+      : {}),
+    ...(options.subjectDeviceId
+      ? { subject_device_id: options.subjectDeviceId }
+      : {}),
+    ...(options.scope?.length ? { scope: options.scope } : {}),
+    ...(options.singleUse ? { single_use: true } : {}),
     ...(parents?.length ? { parents } : {}),
   };
 

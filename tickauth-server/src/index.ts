@@ -27,17 +27,25 @@ export {
   InMemoryCapsuleStore,
   type CapsuleStore,
   type CapsuleQuery,
-} from './store';
+  type CapsuleLifecycle,
+} from "./store";
 
 // Handlers
 export {
   createVerifyHandler,
   type VerifyHandlerOptions,
   type VerifyHandlerResponse,
-} from './verify-handler';
+} from "./verify-handler";
 
 export {
   createCapsuleHandler,
   type CapsuleHandlerOptions,
   type CapsuleHandlerResponse,
-} from './capsule-handler';
+} from "./capsule-handler";
+
+export {
+  createRevokeHandler,
+  createConsumeHandler,
+  type RevokeHandlerOptions,
+  type RevokeHandlerResponse,
+} from "./revoke-handler";
