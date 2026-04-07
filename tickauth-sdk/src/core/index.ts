@@ -44,3 +44,18 @@ export {
   verifyCapsuleIntegrity,
   type CreateCapsuleOptions,
 } from "./capsule";
+
+// CCE (Capsule-Carried Encryption)
+export {
+  CCE_VERSION,
+  createCceChallenge,
+  issueCceCapsule,
+  verifyCceCapsuleSignature,
+  verifyCceCapsuleIntegrity,
+  type CceChallengeOptions,
+  type CceChallenge,
+  type CceCapsuleClaims,
+  type CceCapsuleConstraints,
+  type CceSignature,
+  type IssueCceCapsuleOptions,
+} from "./cce";
