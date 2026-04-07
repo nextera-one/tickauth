@@ -8,8 +8,8 @@
  *
  * capsule_id = "cps_b3_" + blake3(canonical_capsule_json_without_id)
  */
-import { blake3 } from "@noble/hashes/blake3";
-import { bytesToHex } from "@noble/hashes/utils";
+import { blake3 } from "@noble/hashes/blake3.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
 
 import type { CapsuleStatus, CapsuleType, TickAuthCapsule, TickAuthMode, TickAuthProof } from "./types";
 

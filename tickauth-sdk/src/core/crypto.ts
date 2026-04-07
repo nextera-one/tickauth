@@ -1,12 +1,11 @@
+import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
+import { sha512 } from '@noble/hashes/sha2.js';
 /**
  * TickAuth SDK - Cryptographic Utilities
  * --------------------------------------
  * Ed25519 signing and verification using @noble/ed25519.
  */
-
 import * as ed from '@noble/ed25519';
-import { sha512 } from '@noble/hashes/sha2';
-import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
 
 // Configure ed25519 to use sha512 (for sync operations)
 // @ts-expect-error - sha512Sync may not be in types but is used internally

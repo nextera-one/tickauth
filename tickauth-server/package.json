@@ -31,7 +31,7 @@
   "author": "Nextera.one",
   "license": "MIT",
   "dependencies": {
-    "@nextera.one/tickauth-sdk": "^1.2.0"
+    "@nextera.one/tickauth-sdk": "file:../tickauth-sdk"
   },
   "devDependencies": {
     "tsup": "^8.0.0",
