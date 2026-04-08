@@ -49,3 +49,24 @@ export {
   type RevokeHandlerOptions,
   type RevokeHandlerResponse,
 } from "./revoke-handler";
+
+export {
+  InMemoryCceChallengeStore,
+  type CceChallengeStore,
+  type CceChallengeLifecycle,
+  type CceChallengeLifecycleStatus,
+} from "./cce-challenge-store";
+
+export {
+  createCceChallengeHandler,
+  type CreateCceChallengeHandlerOptions,
+  type CceChallengeCreateRequest,
+  type CceChallengeHandlerResponse,
+} from "./cce-challenge-handler";
+
+export {
+  createCceProofHandler,
+  type CreateCceProofHandlerOptions,
+  type CceProofIssueRequest,
+  type CceProofHandlerResponse,
+} from "./cce-proof-handler";

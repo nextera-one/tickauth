@@ -48,14 +48,22 @@ export {
 // CCE (Capsule-Carried Encryption)
 export {
   CCE_VERSION,
+  canonicalizeCcePayload,
   createCceChallenge,
+  signCceChallenge,
+  verifyCceChallengeSignature,
+  verifyCceProofForChallenge,
+  hashCceProof,
   issueCceCapsule,
   verifyCceCapsuleSignature,
   verifyCceCapsuleIntegrity,
   type CceChallengeOptions,
   type CceChallenge,
+  type CceSignedChallenge,
   type CceCapsuleClaims,
   type CceCapsuleConstraints,
   type CceSignature,
+  type VerifyCceProofOptions,
+  type VerifyCceProofResult,
   type IssueCceCapsuleOptions,
 } from "./cce";

@@ -3,6 +3,11 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@nextera.one/tickauth-sdk": ["../tickauth-sdk/src/index.ts"],
+      "@nextera.one/tickauth-sdk/*": ["../tickauth-sdk/src/*"]
+    },
     "strict": true,
     "declaration": true,
     "outDir": "./dist",

@@ -13,10 +13,10 @@
  * - Capsule nonce (anti-replay)
  */
 import { blake3 } from "@noble/hashes/blake3.js";
-import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
 import { ulid } from "ulid";
 
-import { getCurrentTick, serializeChallenge } from "./challenge";
+import { getCurrentTick, serializeProofPayload } from "./challenge";
 import { generateNonce, signEd25519, verifyEd25519 } from "./crypto";
 import type { TickAuthChallenge, TickAuthIdentity, TickAuthMode, TickAuthProof, TickWindow } from "./types";
 
@@ -89,6 +89,16 @@ export interface CceChallenge extends TickAuthChallenge {
   cce_policy_hash?: string;
 }
 
+/**
+ * Signed CCE challenge.
+ * TickAuth signs this payload so clients can verify challenge authenticity
+ * before producing presence proofs.
+ */
+export interface CceSignedChallenge {
+  challenge: CceChallenge;
+  issuer_sig: CceSignature;
+}
+
 // ============================================================================
 // CCE Capsule Claims (issued by TickAuth, verified by AXIS)
 // ============================================================================
@@ -125,6 +135,8 @@ export interface CceCapsuleClaims {
   capsule_nonce: string;
   /** Originating challenge ID */
   challenge_id: string;
+  /** Content hash of the validated proof payload */
+  proof_hash?: string;
   /** Policy hash */
   policy_hash?: string;
   /** Issued at (Unix seconds) */
@@ -158,6 +170,12 @@ export function createCceChallenge(options: CceChallengeOptions): CceChallenge {
     throw new Error("createCceChallenge: intent is required");
   if (!options.audience?.trim())
     throw new Error("createCceChallenge: audience is required");
+  if (
+    !Number.isFinite(options.windowMs ?? 30000) ||
+    (options.windowMs ?? 30000) <= 0
+  ) {
+    throw new Error("createCceChallenge: windowMs must be a positive number");
+  }
 
   const now = getCurrentTick();
   const windowMs = options.windowMs ?? 30000;
@@ -199,6 +217,47 @@ export function createCceChallenge(options: CceChallengeOptions): CceChallenge {
   };
 }
 
+/**
+ * Build the signing payload for CCE challenges.
+ */
+function buildChallengeSignPayload(challenge: CceChallenge): Uint8Array {
+  return new TextEncoder().encode(canonicalizeCcePayload(challenge));
+}
+
+/**
+ * Sign a CCE challenge with TickAuth issuer key.
+ */
+export async function signCceChallenge(
+  challenge: CceChallenge,
+  issuerIdentity: TickAuthIdentity,
+): Promise<CceSignedChallenge> {
+  const signPayload = buildChallengeSignPayload(challenge);
+  const value = await signEd25519(signPayload, issuerIdentity.privateKeyHex);
+  return {
+    challenge,
+    issuer_sig: {
+      alg: "EdDSA",
+      kid: issuerIdentity.kid ?? "tickauth-issuer",
+      value,
+    },
+  };
+}
+
+/**
+ * Verify a signed CCE challenge using TickAuth issuer public key.
+ */
+export async function verifyCceChallengeSignature(
+  signedChallenge: CceSignedChallenge,
+  issuerPublicKeyHex: string,
+): Promise<boolean> {
+  const signPayload = buildChallengeSignPayload(signedChallenge.challenge);
+  return verifyEd25519(
+    signPayload,
+    signedChallenge.issuer_sig.value,
+    issuerPublicKeyHex,
+  );
+}
+
 // ============================================================================
 // CCE Capsule Issuance
 // ============================================================================
@@ -206,9 +265,9 @@ export function createCceChallenge(options: CceChallengeOptions): CceChallenge {
 /**
  * Canonical JSON for deterministic hashing.
  */
-function canonicalize(obj: unknown): string {
+export function canonicalizeCcePayload(obj: unknown): string {
   if (Array.isArray(obj)) {
-    return "[" + obj.map(canonicalize).join(",") + "]";
+    return "[" + obj.map(canonicalizeCcePayload).join(",") + "]";
   }
   if (obj !== null && typeof obj === "object") {
     const sorted = Object.keys(obj as object)
@@ -217,7 +276,7 @@ function canonicalize(obj: unknown): string {
         (k) =>
           JSON.stringify(k) +
           ":" +
-          canonicalize((obj as Record<string, unknown>)[k]),
+          canonicalizeCcePayload((obj as Record<string, unknown>)[k]),
       );
     return "{" + sorted.join(",") + "}";
   }
@@ -230,7 +289,7 @@ function canonicalize(obj: unknown): string {
 function computeCceCapsuleId(
   claims: Omit<CceCapsuleClaims, "capsule_id" | "issuer_sig">,
 ): string {
-  const canonical = canonicalize(claims);
+  const canonical = canonicalizeCcePayload(claims);
   const hash = blake3(new TextEncoder().encode(canonical));
   return "cce_b3_" + bytesToHex(hash).slice(0, 32);
 }
@@ -242,7 +301,170 @@ function computeCceCapsuleId(
 function buildCapsuleSignPayload(
   claims: Omit<CceCapsuleClaims, "issuer_sig">,
 ): Uint8Array {
-  return new TextEncoder().encode(canonicalize(claims));
+  return new TextEncoder().encode(canonicalizeCcePayload(claims));
+}
+
+/**
+ * Hash a proof into a short content-addressed identifier.
+ * This hash is embedded in capsules to bind issued authority to one exact proof.
+ */
+export function hashCceProof(proof: TickAuthProof): string {
+  const canonical = canonicalizeCcePayload(proof);
+  const hash = blake3(new TextEncoder().encode(canonical));
+  return "prf_b3_" + bytesToHex(hash).slice(0, 32);
+}
+
+export interface VerifyCceProofOptions {
+  /**
+   * Trusted subject key from your identity registry.
+   * When provided, proof signatures must verify against this key.
+   */
+  trustedSubjectPublicKeyHex?: string;
+  /**
+   * If true and trustedSubjectPublicKeyHex is missing, verification fails.
+   * Default: false (uses proof-embedded key when trusted key is absent).
+   */
+  requireTrustedSubjectKey?: boolean;
+  /**
+   * Tick source override (ms) for testing/distributed clock control.
+   */
+  currentTickMs?: number;
+}
+
+export interface VerifyCceProofResult {
+  ok: boolean;
+  code?:
+    | "MALFORMED_PROOF"
+    | "CHALLENGE_MISMATCH"
+    | "SUBJECT_MISMATCH"
+    | "KID_MISMATCH"
+    | "INVALID_SIGNATURE"
+    | "OUTSIDE_WINDOW"
+    | "CHALLENGE_EXPIRED"
+    | "CHALLENGE_NOT_YET_VALID"
+    | "MISSING_TRUSTED_SUBJECT_KEY";
+  message?: string;
+  proofHash?: string;
+}
+
+/**
+ * Validate a proof against one exact CCE challenge.
+ * This enforces intent/audience/kid/time binding before capsule issuance.
+ */
+export async function verifyCceProofForChallenge(
+  proof: TickAuthProof,
+  challenge: CceChallenge,
+  options: VerifyCceProofOptions = {},
+): Promise<VerifyCceProofResult> {
+  if (
+    !proof?.challenge ||
+    !proof?.sig?.sigHex ||
+    !proof?.sig?.publicKeyHex ||
+    typeof proof.tick !== "number" ||
+    !proof.signedAt
+  ) {
+    return {
+      ok: false,
+      code: "MALFORMED_PROOF",
+      message: "Malformed proof payload",
+    };
+  }
+
+  if (
+    challenge.cce_ver !== CCE_VERSION ||
+    challenge.cce_intent !== challenge.action
+  ) {
+    return {
+      ok: false,
+      code: "CHALLENGE_MISMATCH",
+      message: "Challenge does not satisfy required CCE invariants",
+    };
+  }
+
+  // Strong challenge binding: the signed challenge must be byte-for-byte identical.
+  const proofChallengeCanonical = canonicalizeCcePayload(proof.challenge);
+  const expectedChallengeCanonical = canonicalizeCcePayload(challenge);
+  if (proofChallengeCanonical !== expectedChallengeCanonical) {
+    return {
+      ok: false,
+      code: "CHALLENGE_MISMATCH",
+      message: "Proof challenge does not match issued challenge",
+    };
+  }
+
+  if (challenge.sub && proof.challenge.sub !== challenge.sub) {
+    return {
+      ok: false,
+      code: "SUBJECT_MISMATCH",
+      message: "Proof subject does not match challenge subject",
+    };
+  }
+
+  if (proof.sig.kid && proof.sig.kid !== challenge.cce_kid) {
+    return {
+      ok: false,
+      code: "KID_MISMATCH",
+      message: "Proof signer key id does not match challenge key id",
+    };
+  }
+
+  const trustedKey = options.trustedSubjectPublicKeyHex;
+  if (options.requireTrustedSubjectKey && !trustedKey) {
+    return {
+      ok: false,
+      code: "MISSING_TRUSTED_SUBJECT_KEY",
+      message: "Trusted subject key is required but not provided",
+    };
+  }
+
+  const verifyKey = trustedKey ?? proof.sig.publicKeyHex;
+  const signPayload = serializeProofPayload(
+    proof.challenge,
+    proof.tick,
+    proof.signedAt,
+  );
+  const signatureValid = await verifyEd25519(
+    signPayload,
+    proof.sig.sigHex,
+    verifyKey,
+  );
+  if (!signatureValid) {
+    return {
+      ok: false,
+      code: "INVALID_SIGNATURE",
+      message: "Proof signature verification failed",
+    };
+  }
+
+  const driftMs = challenge.window.maxDriftMs ?? 1000;
+  if (
+    proof.tick < challenge.window.tickStart - driftMs ||
+    proof.tick > challenge.window.tickEnd + driftMs
+  ) {
+    return {
+      ok: false,
+      code: "OUTSIDE_WINDOW",
+      message: "Proof tick is outside challenge TPS window",
+    };
+  }
+
+  const nowTick = options.currentTickMs ?? getCurrentTick();
+  if (nowTick < challenge.window.tickStart - driftMs) {
+    return {
+      ok: false,
+      code: "CHALLENGE_NOT_YET_VALID",
+      message: "Challenge TPS window has not started yet",
+    };
+  }
+  if (nowTick > challenge.window.tickEnd + driftMs) {
+    return {
+      ok: false,
+      code: "CHALLENGE_EXPIRED",
+      message: "Challenge TPS window has expired",
+    };
+  }
+
+  return { ok: true, proofHash: hashCceProof(proof) };
 }
 
 /**
@@ -265,6 +487,19 @@ export interface IssueCceCapsuleOptions {
   constraints?: CceCapsuleConstraints;
   /** Override policy hash */
   policyHash?: string;
+  /** Trusted subject key from registry, if available */
+  trustedSubjectPublicKeyHex?: string;
+  /** If true and no trustedSubjectPublicKeyHex is provided, fail issuance */
+  requireTrustedSubjectKey?: boolean;
+  /**
+   * Current tick override (ms) for challenge expiry checks.
+   */
+  currentTickMs?: number;
+  /**
+   * Skip proof verification when you already validated it externally.
+   * Default: false (safe).
+   */
+  skipProofVerification?: boolean;
 }
 
 /**
@@ -280,13 +515,39 @@ export async function issueCceCapsule(
   options: IssueCceCapsuleOptions,
 ): Promise<CceCapsuleClaims> {
   const { proof, challenge, issuerIdentity } = options;
+  if (challenge.cce_ver !== CCE_VERSION) {
+    throw new Error(
+      `issueCceCapsule: unsupported challenge version ${challenge.cce_ver}`,
+    );
+  }
+
+  let proofHash: string | undefined;
+  if (!options.skipProofVerification) {
+    const proofResult = await verifyCceProofForChallenge(proof, challenge, {
+      trustedSubjectPublicKeyHex: options.trustedSubjectPublicKeyHex,
+      requireTrustedSubjectKey: options.requireTrustedSubjectKey,
+      currentTickMs: options.currentTickMs,
+    });
+    if (!proofResult.ok) {
+      throw new Error(
+        `issueCceCapsule: proof validation failed (${proofResult.code})`,
+      );
+    }
+    proofHash = proofResult.proofHash;
+  } else {
+    proofHash = hashCceProof(proof);
+  }
+
   const nowSeconds = Math.floor(Date.now() / 1000);
   const ttl = options.ttlSeconds ?? 60;
+  if (!Number.isFinite(ttl) || ttl <= 0) {
+    throw new Error("issueCceCapsule: ttlSeconds must be a positive number");
+  }
 
   // Build claims without capsule_id and signature (computed after)
   const baseClaims: Omit<CceCapsuleClaims, "capsule_id" | "issuer_sig"> = {
     ver: CCE_VERSION,
-    sub: challenge.sub ?? proof.sig.publicKeyHex,
+    sub: challenge.sub ?? proof.challenge.sub ?? proof.sig.publicKeyHex,
     kid: challenge.cce_kid,
     intent: challenge.cce_intent,
     aud: challenge.cce_audience,
@@ -294,6 +555,7 @@ export async function issueCceCapsule(
     tps_to: challenge.window.tickEnd,
     capsule_nonce: challenge.nonce,
     challenge_id: challenge.id,
+    ...(proofHash ? { proof_hash: proofHash } : {}),
     ...((options.policyHash ?? challenge.cce_policy_hash)
       ? { policy_hash: options.policyHash ?? challenge.cce_policy_hash }
       : {}),
